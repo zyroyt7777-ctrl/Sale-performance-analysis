@@ -30,7 +30,27 @@ st.write(
 # =====================================
 
 try:
-    model = joblib.load("model.pkl")
+import os
+import joblib
+import streamlit as st
+
+model_path = os.path.join(
+    os.path.dirname(__file__),
+    "model.pkl"
+)
+
+if not os.path.exists(model_path):
+    st.error("❌ model.pkl not found!")
+
+    st.write("Files available in app folder:")
+
+    st.write(os.listdir(os.path.dirname(__file__)))
+
+    st.stop()
+
+model = joblib.load(model_path)
+
+st.success("✅ model.pkl loaded successfully!")
     st.success("Model loaded successfully!")
 
 except Exception as e:
