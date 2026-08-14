@@ -30,14 +30,28 @@ st.write(
 # =====================================
 
 try:
-
     model = joblib.load("model.pkl")
+    st.success("Model loaded successfully!")
 
 except Exception as e:
+    st.error("❌ Unable to load model.pkl")
 
-    st.error("Unable to load model.pkl")
+    st.write("### Exact Error:")
+    st.exception(e)
 
-    st.code(str(e))
+    st.write("### Model file information:")
+
+    import os
+
+    if os.path.exists("model.pkl"):
+        st.write("model.pkl exists ✅")
+        st.write(
+            "File size:",
+            os.path.getsize("model.pkl"),
+            "bytes"
+        )
+    else:
+        st.write("model.pkl NOT FOUND ❌")
 
     st.stop()
 
