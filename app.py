@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
-import joblib
-import os
+
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestRegressor
 
 
 # ==========================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # ==========================================
 
 st.set_page_config(
@@ -22,146 +25,238 @@ st.set_page_config(
 st.title("📊 Sales Revenue Prediction")
 
 st.write(
-    "Enter the sales information to predict Revenue."
+    "Predict Revenue using your Large Sales dataset."
 )
 
 
 # ==========================================
-# FIND MODEL FILE
+# LOAD DATASET
 # ==========================================
 
-model_path = os.path.join(
-    os.path.dirname(__file__),
-    "model.pkl"
+@st.cache_data
+def load_data():
+
+    return pd.read_csv(
+        "large_sales_data.csv"
+    )
+
+
+df = load_data()
+
+
+# ==========================================
+# SHOW DATASET
+# ==========================================
+
+st.subheader("📋 Sales Dataset")
+
+st.write(
+    f"Total records: {len(df)}"
+)
+
+st.dataframe(
+    df.head(10),
+    use_container_width=True
 )
 
 
 # ==========================================
-# CHECK MODEL FILE
+# PREPARE DATA
 # ==========================================
 
-if not os.path.exists(model_path):
+df = df.dropna(
+    subset=["Revenue"]
+)
 
-    st.error("❌ model.pkl not found!")
 
-    st.write("Files found in the application folder:")
+X = df.drop(
+    columns=["Revenue"]
+)
 
-    st.write(
-        os.listdir(os.path.dirname(__file__))
+y = df["Revenue"]
+
+
+# ==========================================
+# FIND CATEGORICAL COLUMNS
+# ==========================================
+
+categorical_columns = X.select_dtypes(
+    include=["object", "category"]
+).columns.tolist()
+
+
+# ==========================================
+# PREPROCESSING
+# ==========================================
+
+preprocessor = ColumnTransformer(
+
+    transformers=[
+
+        (
+            "categorical",
+
+            OneHotEncoder(
+                handle_unknown="ignore"
+            ),
+
+            categorical_columns
+        )
+
+    ],
+
+    remainder="passthrough"
+)
+
+
+# ==========================================
+# MODEL
+# ==========================================
+
+model = RandomForestRegressor(
+
+    n_estimators=100,
+
+    random_state=42,
+
+    n_jobs=-1
+)
+
+
+# ==========================================
+# PIPELINE
+# ==========================================
+
+pipeline = Pipeline([
+
+    (
+        "preprocessor",
+        preprocessor
+    ),
+
+    (
+        "model",
+        model
     )
 
-    st.stop()
+])
 
 
 # ==========================================
-# LOAD MODEL
+# TRAIN MODEL
 # ==========================================
 
-try:
+with st.spinner(
+    "Training model..."
+):
 
-    model = joblib.load(model_path)
-
-    st.success(
-        "✅ Model loaded successfully!"
+    pipeline.fit(
+        X,
+        y
     )
 
-except Exception as e:
 
-    st.error(
-        "❌ Error loading model.pkl"
-    )
-
-    st.exception(e)
-
-    st.stop()
+st.success(
+    "✅ Model trained successfully!"
+)
 
 
 # ==========================================
-# SIDEBAR
+# INPUT SECTION
 # ==========================================
 
 st.sidebar.header(
-    "Sales Information"
+    "Enter Sales Information"
 )
 
 
-region = st.sidebar.selectbox(
-    "Region",
-    [
-        "North",
-        "South",
-        "East",
-        "West"
-    ]
-)
+# Get values directly from dataset
+# This prevents incorrect category names
+
+for column in categorical_columns:
+
+    values = (
+        df[column]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    if len(values) > 0:
+
+        selected_value = st.sidebar.selectbox(
+            column,
+            values
+        )
+
+        # Store selected value
+        if "inputs" not in st.session_state:
+            st.session_state.inputs = {}
+
+        st.session_state.inputs[
+            column
+        ] = selected_value
 
 
-salesperson = st.sidebar.text_input(
-    "Salesperson",
-    value="John"
-)
+# Numerical columns
+numerical_columns = X.select_dtypes(
+    include=["int64", "float64"]
+).columns.tolist()
 
 
-product_category = st.sidebar.text_input(
-    "Product Category",
-    value="Electronics"
-)
+for column in numerical_columns:
 
+    default_value = float(
+        df[column].median()
+    )
 
-units_sold = st.sidebar.number_input(
-    "Units Sold",
-    min_value=0,
-    value=10,
-    step=1
-)
+    value = st.sidebar.number_input(
+        column,
+        value=default_value
+    )
+
+    if "inputs" not in st.session_state:
+        st.session_state.inputs = {}
+
+    st.session_state.inputs[
+        column
+    ] = value
 
 
 # ==========================================
 # PREDICTION
 # ==========================================
 
-if st.sidebar.button("Predict Revenue"):
+if st.sidebar.button(
+    "🔮 Predict Revenue"
+):
 
-    input_data = pd.DataFrame({
-
-        "Region": [region],
-
-        "Salesperson": [salesperson],
-
-        "Product_Category": [product_category],
-
-        "Units_Sold": [units_sold]
-
-    })
+    input_data = pd.DataFrame(
+        [st.session_state.inputs]
+    )
 
 
     try:
 
-        prediction = model.predict(
+        prediction = pipeline.predict(
             input_data
         )
 
 
-        # ==================================
-        # RESULT
-        # ==================================
-
         st.subheader(
             "💰 Predicted Revenue"
         )
+
 
         st.success(
             f"₹ {prediction[0]:,.2f}"
         )
 
 
-        # ==================================
-        # INPUT DATA
-        # ==================================
-
         st.subheader(
-            "📋 Sales Information"
+            "📋 Input Data"
         )
+
 
         st.dataframe(
             input_data,
@@ -172,7 +267,8 @@ if st.sidebar.button("Predict Revenue"):
     except Exception as e:
 
         st.error(
-            "❌ Prediction failed"
+            "Prediction failed"
         )
 
         st.exception(e)
+
